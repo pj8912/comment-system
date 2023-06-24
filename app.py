@@ -1,10 +1,16 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 import json
 import mysql.connector
 import os 
 from dotenv import load_dotenv
+from flask_sse import sse
+import time
 
 app = Flask(__name__)
+
+app.config['REDIS_URL'] = 'redis://localhost:6379'
+
+app.register_blueprint(sse, url_prefix='/stream')
 
 app.secret_key = "SECRET"
 
@@ -62,6 +68,24 @@ def get_all_comments():
         return jsonify({"status":1 ,"posts":postsArray})
     else:
         return jsonify({"status" : 0,"message":"failed!"})
+
+
+
+@app.route('/lastfetch')
+def fetch_last_post():
+    sql = "SELECT * FROM posts ORDER BY created_at DESC LIMIT 1"
+    cursor.execute(sql)
+    result = cursor.fetchone()
+    if result:
+        postObj = {
+            'post': result[1]
+        }
+        sse.publish({"status": 1, "post": postObj}, type='new_post')  # Publish SSE event
+        return jsonify({"status": 1, "post": postObj})
+    else:
+        return jsonify({"status": 0, "message": "No posts found"})
+
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=1500)
